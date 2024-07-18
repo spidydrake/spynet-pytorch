@@ -118,7 +118,7 @@ class SpyNet(nn.Module):
             k = len(checkpoint) // 10
 
             instance = cls(k=k)
-            instance.load_state_dict(checkpoint, strict=False)
+            # instance.load_state_dict(checkpoint, strict=False)
             instance.to(map_location)
             return instance
 

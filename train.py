@@ -1,6 +1,5 @@
-import click
 from pathlib import Path
-from typing import Tuple, Union, Sequence
+from typing import Tuple, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -8,6 +7,9 @@ from torch.utils.data import DataLoader, Dataset, Subset
 
 import spynet
 import spynet.transforms as OFT
+
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -18,8 +20,8 @@ AVAILABLE_PRETRAINED = ['sentinel', 'kitti', 'flying-chair', 'none']
 def train_one_epoch(dl: DataLoader,
                     optimizer: torch.optim.AdamW,
                     criterion_fn: torch.nn.Module,
-                    Gk: torch.nn.Module, 
-                    prev_pyramid: torch.nn.Module = None, 
+                    Gk: torch.nn.Module,
+                    prev_pyramid: torch.nn.Module = None,
                     print_freq: int = 100,
                     header: str = ''):
     Gk.train()
@@ -66,18 +68,18 @@ def load_data(root: str, k: int) -> Tuple[Subset, Subset]:
         OFT.Resize(*spynet.config.GConf(k).image_size),
         OFT.RandomRotate(17),
         OFT.ToTensor(),
-        OFT.Normalize(mean=[.485, .406, .456], 
-                      std= [.229, .225, .224])
-    ]) 
+        OFT.Normalize(mean=[.485, .406, .456],
+                      std=[.229, .225, .224])
+    ])
 
     valid_tfms = OFT.Compose([
         OFT.Resize(*spynet.config.GConf(k).image_size),
         OFT.ToTensor(),
-        OFT.Normalize(mean=[.485, .406, .456], 
-                      std= [.229, .225, .224])
+        OFT.Normalize(mean=[.485, .406, .456],
+                      std=[.229, .225, .224])
     ])
-    
-    train_ds = spynet.dataset.FlyingChairDataset(root,  transform=train_tfms)
+
+    train_ds = spynet.dataset.FlyingChairDataset(root, transform=train_tfms)
     valid_ds = spynet.dataset.FlyingChairDataset(root, transform=valid_tfms)
     train_len = int(len(train_ds) * .9)
     rand_idx = torch.randperm(len(train_ds)).tolist()
@@ -94,7 +96,7 @@ def collate_fn(batch):
     return (torch.stack(frame1), torch.stack(frame2)), torch.stack(flow)
 
 
-def build_dl(train_ds: Subset, 
+def build_dl(train_ds: Subset,
              valid_ds: Subset,
              batch_size: int,
              num_workers: int) -> Tuple[DataLoader, DataLoader]:
@@ -114,19 +116,19 @@ def build_dl(train_ds: Subset,
     return train_dl, valid_dl
 
 
-def build_spynets(k: int, name: str, 
+def build_spynets(k: int, name: str,
                   previous: Sequence[torch.nn.Module]) \
-                      -> Tuple[spynet.SpyNetUnit, spynet.SpyNet]:
+        -> Tuple[spynet.SpyNetUnit, spynet.SpyNet]:
 
     if name != 'none':
         pretrained = spynet.SpyNet.from_pretrained(name, map_location=device)
         current_train = pretrained.units[k]
     else:
         current_train = spynet.SpyNetUnit()
-        
+
     current_train.to(device)
     current_train.train()
-    
+
     if k == 0:
         Gk = None
     else:
@@ -137,14 +139,14 @@ def build_spynets(k: int, name: str,
     return current_train, Gk
 
 
-def train_one_level(k: int, 
+def train_one_level(k: int,
                     previous: Sequence[spynet.SpyNetUnit],
                     **kwargs) -> spynet.SpyNetUnit:
 
     print(f'Training level {k}...')
 
     train_ds, valid_ds = load_data(kwargs['root'], k)
-    train_dl, valid_dl = build_dl(train_ds, valid_ds, 
+    train_dl, valid_dl = build_dl(train_ds, valid_ds,
                                   kwargs['batch_size'],
                                   kwargs['dl_num_workers'])
 
@@ -156,7 +158,7 @@ def train_one_level(k: int,
     loss_fn = spynet.nn.EPELoss()
 
     for epoch in range(kwargs['epochs']):
-        train_one_epoch(train_dl, 
+        train_one_epoch(train_dl,
                         optimizer,
                         loss_fn,
                         current_level,
@@ -164,9 +166,9 @@ def train_one_level(k: int,
                         print_freq=999999,
                         header=f'Epoch [{epoch}] [Level {k}]')
 
-    torch.save(current_level.state_dict(), 
+    torch.save(current_level.state_dict(),
                str(Path(kwargs['checkpoint_dir']) / f'{k}.pt'))
-    
+
     return current_level
 
 
@@ -177,30 +179,21 @@ def train(**kwargs):
         previous.append(train_one_level(k, previous, **kwargs))
 
     final = spynet.SpyNet(previous)
-    torch.save(final.state_dict(), 
+    torch.save(final.state_dict(),
                str(Path(kwargs['checkpoint_dir']) / f'final.pt'))
 
 
-@click.command()
-
-@click.option('--root', 
-              type=click.Path(file_okay=False, exists=True), default='data/')
-
-@click.option('--checkpoint-dir', 
-              type=click.Path(file_okay=False), default='models/spynet_1st.pt')
-@click.option('--finetune-name', 
-              type=click.Choice(AVAILABLE_PRETRAINED), 
-              default='sentinel')
-
-@click.option('--epochs', type=int, default=100)
-@click.option('--batch-size', type=int, default=32)
-@click.option('--dl-num-workers', type=int, default=4)
-
-@click.option('--levels', type=int, default=5)
-
-def main(**kwargs):
-    train(**kwargs)
-
-
 if __name__ == "__main__":
-    main()
+    # Define training parameters
+    training_params = {
+        'root': 'data/',
+        'checkpoint_dir': 'models/1st/',
+        'finetune_name': 'sentinel',
+        'epochs': 8,
+        'batch_size': 32,
+        'dl_num_workers': 4,
+        'levels': 5
+    }
+    
+    # Start training
+    train(**training_params)
