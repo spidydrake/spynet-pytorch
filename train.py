@@ -18,7 +18,7 @@ AVAILABLE_PRETRAINED = ['sentinel', 'kitti', 'flying-chair', 'none']
 
 
 def train_one_epoch(dl: DataLoader,
-                    optimizer: torch.optim.AdamW,
+                    optimizer: torch.optim.Adam,
                     criterion_fn: torch.nn.Module,
                     Gk: torch.nn.Module,
                     prev_pyramid: torch.nn.Module = None,
@@ -141,6 +141,7 @@ def build_spynets(k: int, name: str,
 
 def train_one_level(k: int,
                     previous: Sequence[spynet.SpyNetUnit],
+                    learning_rate: float,
                     **kwargs) -> spynet.SpyNetUnit:
 
     print(f'Training level {k}...')
@@ -152,9 +153,9 @@ def train_one_level(k: int,
 
     current_level, trained_pyramid = build_spynets(
         k, kwargs['finetune_name'], previous)
-    optimizer = torch.optim.AdamW(current_level.parameters(),
-                                  lr=1e-5,
-                                  weight_decay=4e-5)
+    optimizer = torch.optim.Adam(current_level.parameters(),
+                                 lr=learning_rate,  # Use the specific learning rate for this level
+                                 weight_decay=4e-5)
     loss_fn = spynet.nn.EPELoss()
 
     for epoch in range(kwargs['epochs']):
@@ -164,7 +165,8 @@ def train_one_level(k: int,
                         current_level,
                         trained_pyramid,
                         print_freq=999999,
-                        header=f'Epoch [{epoch}] [Level {k}]')
+                        header=f'Epoch [{epoch}] [Level {k}]',
+                        )
 
     torch.save(current_level.state_dict(),
                str(Path(kwargs['checkpoint_dir']) / f'{k}.pt'))
@@ -172,11 +174,11 @@ def train_one_level(k: int,
     return current_level
 
 
-def train(**kwargs):
+def train(learning_rates: Sequence[float], **kwargs):
     torch.manual_seed(0)
     previous = []
     for k in range(kwargs.pop('levels')):
-        previous.append(train_one_level(k, previous, **kwargs))
+        previous.append(train_one_level(k, previous, learning_rates[k], **kwargs))
 
     final = spynet.SpyNet(previous)
     torch.save(final.state_dict(),
@@ -186,14 +188,18 @@ def train(**kwargs):
 if __name__ == "__main__":
     # Define training parameters
     training_params = {
-        'root': 'data/',
-        'checkpoint_dir': 'models/1st/',
-        'finetune_name': 'sentinel',
-        'epochs': 8,
-        'batch_size': 32,
-        'dl_num_workers': 4,
+        # 'root': 'FlyingChairs_release/data/',
+        'root': 'data/datas',
+        'checkpoint_dir': 'models/',
+        'finetune_name': 'sentinel.pt',
+        'epochs': 1000,
+        'batch_size': 65,
+        'dl_num_workers': 16,
         'levels': 5
     }
-    
+
+    # Define learning rates for each level
+    learning_rates = [1e-3, 1e-3, 1e-3, 1e-3, 1e-3]  # Adjust these values as needed
+
     # Start training
-    train(**training_params)
+    train(learning_rates, **training_params)

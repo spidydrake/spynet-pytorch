@@ -16,18 +16,32 @@ class SpyNetUnit(nn.Module):
 
         self.module = nn.Sequential(
             nn.Conv2d(input_channels, 32, kernel_size=7, padding=3, stride=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(inplace=False),
 
             nn.Conv2d(32, 64, kernel_size=7, padding=3, stride=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=False),
 
             nn.Conv2d(64, 32, kernel_size=7, padding=3, stride=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(inplace=False),
 
             nn.Conv2d(32, 16, kernel_size=7, padding=3, stride=1),
+            nn.BatchNorm2d(16),
             nn.ReLU(inplace=False),
 
             nn.Conv2d(16, 2, kernel_size=7, padding=3, stride=1))
+        
+        self._weight_init()
+ 
+    def _weight_init(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                m.weight.weight = m.weight / 100
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
     def forward(self, 
                 frames: Tuple[torch.Tensor, torch.Tensor], 
@@ -115,36 +129,11 @@ class SpyNet(nn.Module):
         def get_model(path: str) -> 'SpyNet':
             checkpoint = torch.load(path, 
                                     map_location=map_location)
-            k = len(checkpoint) // 10
+            k = 5
 
             instance = cls(k=k)
-            # instance.load_state_dict(checkpoint, strict=False)
+            instance.load_state_dict(checkpoint, strict=False)
             instance.to(map_location)
             return instance
 
-        bucket = 'ml-generic-purpose-pt-models'
-        base_url = f'https://storage.googleapis.com/{bucket}/spynet'
-
-        names_url = {
-            'sentinel': f'{base_url}/final-sentinel.pt',
-            'kitti': f'{base_url}/kitti.pt',
-            'flying-chair': f'{base_url}/final-chairs.pt',
-        }
-
-        if name not in names_url and Path(name).exists():
-            return get_model(str(name))
-        elif name not in names_url:
-            available_names = ','.join(f'"{o}"' for o in names_url)
-            raise ValueError(f'The name {name} is not available. '
-                             f'The available models are: {available_names}')
-
-        if dst_file is None:
-            dst_file = Path.home() / '.spynet' / (name + '.pt')
-            dst_file.parent.mkdir(exist_ok=True)
-        
-        if not dst_file.exists():
-            res = requests.get(names_url[name])
-            with open(str(dst_file), 'wb') as f:
-                f.write(res.content)
-        
-        return get_model(str(dst_file))
+        return get_model(str(name))

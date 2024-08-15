@@ -10,6 +10,8 @@ class BaseGConf(NamedTuple):
 class GConf(object):
 
     def __init__(self, level: int) -> None:
+        # print(f"level: {level}")
+        # print(f"MAX_G: {MAX_G}")
         assert level >= 0 and level <= MAX_G
         self.base_conf = BaseGConf()
         self.scale = 2 ** level

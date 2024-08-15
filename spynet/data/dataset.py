@@ -50,7 +50,8 @@ class FlyingChairDataset(torch.utils.data.Dataset):
             (frame1, frame2), optical_flow = \
                 self.transform((frame1, frame2), optical_flow)
             
-        return (frame1, frame2), optical_flow
+        # return torch.stack((frame1, frame2), dim=0), optical_flow
+        return frame1, frame2, optical_flow
 
     def __len__(self) -> int:
         return len(self.ids)
